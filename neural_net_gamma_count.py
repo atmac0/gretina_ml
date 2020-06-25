@@ -1,6 +1,5 @@
 import tensorflow as tf
 from tensorflow import keras
-
 from sklearn.cluster import KMeans
 
 import csv
@@ -49,7 +48,8 @@ class Data:
                 for row in csvreader:
                     row = row[0].split(',')
                     if(row[0] == '-1'):
-                        if( (self.file_read_limit == 0) or (cluster_counter < self.file_read_limit) ):
+                        if(cluster_counter < self.file_read_limit):
+
                             if(is_test(test_porportion)):
                                 self.test_clusters.append(Cluster(gamma_count))
                                 active_on_train_list = False
@@ -85,6 +85,7 @@ class Data:
                     row = row[0].split(',')
                     if(row[0] == '-1'):
                         if( (self.file_read_limit == 0) or (cluster_counter < self.file_read_limit) ):
+
                             cluster_list.append(Cluster(gamma_count))
                             cluster_counter = cluster_counter + 1
                         else:
@@ -505,11 +506,11 @@ def train_recurrent(data):
 
     print('\nTest accuracy:', test_acc)
 
+
 def main():
     
-    #file_names = ["out_1173.csv", "out_1332.csv", "out_2505.csv"]
-    file_names = ["out_2505.csv"]
-    file_read_limit = 0 # max number of clusters to read from a file. Zero means no limit
+    file_names = ["out_1173.csv", "out_1332.csv", "out_2505.csv"]
+    file_read_limit = 10000 # max number of clusters to read from a file. Zero is no limit
     test_porportion = 0.2 # porportion of the data used for testing
     
     data = Data(file_names, file_read_limit, test_porportion)
@@ -518,17 +519,20 @@ def main():
     print("Train clusters read from files: ", data.get_train_count())
     print("Test clusters read from files : ", data.get_test_count())
 
+
     
     #data.normalize_train_test()
     
     # clusters are used as the input to the neural net. A cluster contains a collection of interaction points, along with the total number of gammas needed
     # to produce the total energy seen from the cluster. 
 
-    #train_fixed_input(data)    
+    train_fixed_input(data)    
     
     #k_means_clustering(data)
 
-    train_recurrent(data)
-              
+    #train_recurrent(data)
+    
+    
+
 if(__name__ == "__main__"):
     main()
