@@ -1,6 +1,8 @@
 import tensorflow as tf
 from tensorflow import keras
 
+from sklearn.cluster import KMeans
+
 import csv
 import numpy as np
 
@@ -47,7 +49,7 @@ class Data:
                 for row in csvreader:
                     row = row[0].split(',')
                     if(row[0] == '-1'):
-                        if(cluster_counter < self.file_read_limit):
+                        if( (self.file_read_limit == 0) or (cluster_counter < self.file_read_limit) ):
                             if(is_test(test_porportion)):
                                 self.test_clusters.append(Cluster(gamma_count))
                                 active_on_train_list = False
@@ -82,7 +84,7 @@ class Data:
                 for row in csvreader:
                     row = row[0].split(',')
                     if(row[0] == '-1'):
-                        if(cluster_counter < self.file_read_limit):
+                        if( (self.file_read_limit == 0) or (cluster_counter < self.file_read_limit) ):
                             cluster_list.append(Cluster(gamma_count))
                             cluster_counter = cluster_counter + 1
                         else:
@@ -372,33 +374,6 @@ def train_fixed_input(data):
 
     max_interactions = 20 # fixed size of input neurons, representing a cluster. It is expected that the total number of interactions in a cluster is less than this number
     dimensionality_of_interaction = 4 # number of dimensions in an interaction. 4 would represent x, y, z, energy
-
-
-    # cluster_list = data.get_cluster_list()
-    # all_inputs = np.zeros([len(cluster_list), max_interactions, dimensionality_of_interaction])
-    # all_labels = np.zeros(len(cluster_list), dtype='i4')
-
-    # # pull raw data out from clusters and interactions into a 2d array. Each row of the input array will be each a 1D list of every interaction, cycling in order of energy, x, y, z.
-    # for i in range(0, len(cluster_list)):
-    #     cluster = cluster_list[i]
-        
-    #     if(len(cluster.get_interactions() ) <= max_interactions):
-            
-    #         input_data = np.zeros([max_interactions, dimensionality_of_interaction])
-
-    #         interactions = cluster.get_interactions()
-            
-    #         for j in range(0, len(interactions)):
-    #             interaction = np.asarray(interactions[j].get_all())
-    #             input_data = np.insert(input_data, j, interaction, axis=0)
-
-    #         input_data.resize([max_interactions, dimensionality_of_interaction]) # resize cause I'm stupid and can't figure out how to assign a 1d inside a 2d array instead of inserting more rows
-    #         all_inputs[i] = input_data
-    #         all_labels[i] = cluster.get_gamma_count()
-    #     else:
-    #         print("Input size not large enough to contain all interaction points. Increase total allowed interactions per input set")
-    #         exit(1)
-
     
     # pull raw data out from clusters and interactions into a 2d array. Each row of the input array will be each a 1D list of every interaction, cycling in order of energy, x, y, z.
 
@@ -427,7 +402,7 @@ def train_fixed_input(data):
 
 
     print("Model go beep boop")
-    model.fit(train_inputs, train_labels, epochs=10)
+    model.fit(train_inputs, train_labels, epochs=100)
 
     test_loss, test_acc = model.evaluate(test_inputs, test_labels, verbose=2)
 
@@ -439,26 +414,121 @@ def train_fixed_input(data):
 def train_full_array_input(cluster_list):
     pass
 
+
+def near_value(val, deviance, number):
+    if( (val - deviance) < number < (val + deviance) ):
+        return True
+    return False
+
+def k_means_clustering(data):
+
+
+    cluster_counter = 0
+    counter_1332 = 0
+    counter_1173 = 0
+    counter_both = 0
+    
+    cluster_list = data.get_cluster_list()
+    
+    for cluster in cluster_list:
+
+        interactions = cluster.get_interactions()
+        
+        interaction_coords   = np.array([interaction.get_spatial() for interaction in interactions])
+        interaction_energies = np.array([interaction.get_energy() for interaction in interactions])
+
+        if(len(interaction_coords) <= 1):
+            continue
+        
+        kmeans = KMeans(n_clusters=2, random_state=0).fit(interaction_coords)
+        
+        sum_zero_energy = 0
+        sum_one_energy  = 0
+        
+        for i in range(0, len(interaction_coords)):
+            if(kmeans.labels_[i] == 0):
+                sum_zero_energy = sum_zero_energy + interaction_energies[i]
+            elif(kmeans.labels_[i] == 1):
+                sum_one_energy = sum_one_energy + interaction_energies[i]
+            else:
+                print("something went wrong...?")
+            
+        cluster_counter = cluster_counter + 1
+        
+        if(near_value(1332, 5, sum_zero_energy) or near_value(1332, 5, sum_one_energy)):
+            counter_1332 = counter_1332 + 1
+            
+        if(near_value(1173, 5, sum_zero_energy) or near_value(1173, 5, sum_one_energy)):
+            counter_1173 = counter_1173 + 1
+
+        if(near_value(1173, 5, sum_zero_energy) and near_value(1332, 5, sum_one_energy)):
+            counter_both = counter_both + 1
+
+        if(near_value(1332, 5, sum_zero_energy) and near_value(1173, 5, sum_one_energy)):
+            counter_both = counter_both + 1
+            
+
+    print("TOTAL CLUSTERS     : ", cluster_counter)
+    print("TOTAL 1173 CLUSTERS: ", counter_1173)
+    print("TOTAL 1332 CLUSTERS: ", counter_1332)
+    print("TOTAL BOTH CLUSTERS: ", counter_both)
+
+
+def train_recurrent(data):
+
+    max_interactions = 20 # fixed size of input neurons, representing a cluster. It is expected that the total number of interactions in a cluster is less than this number
+    dimensionality_of_interaction = 4 # number of dimensions in an interaction. 4 would represent x, y, z, energy
+    
+    # pull raw data out from clusters and interactions into a 2d array. Each row of the input array will be each a 1D list of every interaction, cycling in order of energy, x, y, z.
+
+    train_list = data.get_train_clusters()
+    test_list  = data.get_test_clusters()
+
+    train_inputs, train_labels = transform_cluster_list_into_3d(train_list, dimensionality_of_interaction, max_interactions)
+    test_inputs, test_labels = transform_cluster_list_into_3d(test_list, dimensionality_of_interaction, max_interactions)
+    
+            
+    print("Successfully created training input and labels")    
+
+    model = keras.Sequential()
+    model.add(keras.LSTM(2, input_shape=(1,4)))
+    model.add(keras.Dense(1))
+
+    model.compile(optimizer='adam',
+              loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+              metrics=['accuracy'])    
+
+    print("Model go beep boop")
+    model.fit(train_inputs, train_labels, epochs=100)
+
+    test_loss, test_acc = model.evaluate(test_inputs, test_labels, verbose=2)
+
+    print('\nTest accuracy:', test_acc)
+
 def main():
     
-    file_names = ["out_1173.csv", "out_1332.csv", "out_2505.csv"]
-    file_read_limit = 10000 # max number of clusters to read from a file
+    #file_names = ["out_1173.csv", "out_1332.csv", "out_2505.csv"]
+    file_names = ["out_2505.csv"]
+    file_read_limit = 0 # max number of clusters to read from a file. Zero means no limit
     test_porportion = 0.2 # porportion of the data used for testing
     
     data = Data(file_names, file_read_limit, test_porportion)
 
+    print("Total clusters read from files: ", data.get_cluster_count())
     print("Train clusters read from files: ", data.get_train_count())
-    print("Test clusters read from files: ", data.get_test_count())
+    print("Test clusters read from files : ", data.get_test_count())
 
     
-    data.normalize_train_test()
+    #data.normalize_train_test()
     
     # clusters are used as the input to the neural net. A cluster contains a collection of interaction points, along with the total number of gammas needed
     # to produce the total energy seen from the cluster. 
 
-    train_fixed_input(data)    
+    #train_fixed_input(data)    
     
-    
+    #k_means_clustering(data)
 
+    train_recurrent(data)
+              
 if(__name__ == "__main__"):
     main()
