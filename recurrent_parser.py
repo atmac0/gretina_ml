@@ -46,8 +46,10 @@ class DataWrangler:
                 if(row[0] == -1):
                     if(len(cluster) <= self.max_interactions):
                         cluster = self.sort_cluster(cluster)
-                        cluster.extend([[0] * self.dimensionality_of_interaction] * (self.max_interactions - len(cluster)))
                         label = create_label(cluster)
+                        
+                        cluster.extend([[0] * self.dimensionality_of_interaction] * (self.max_interactions - len(cluster))) # pad the list with empty interactions so it can be initialized to a rectangular numpy array
+
                         if(label != None):
                             self.dataset.append(cluster)
                             self.labels.append(label)
@@ -64,7 +66,8 @@ class DataWrangler:
 
     def create_label(cluster):
 
-        
+        range_list = range(0, len(cluster)-1)
+        print(range_list)
         
         return None
     
