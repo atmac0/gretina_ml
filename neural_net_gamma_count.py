@@ -341,7 +341,37 @@ def train_recursive(cluster_list):
     pass
 
 
-def transform_cluster_list_into_3d(cluster_list, dimensionality_of_interaction, max_interactions):
+def transform_cluter_list_into_3d(cluster_list, dimensionality_of_interaction, max_interactions):
+
+    inputs = np.zeros([len(cluster_list), max_interactions, dimensionality_of_interaction])
+    labels = np.zeros(len(cluster_list), dtype='i4')
+    
+    for i in range(0, len(cluster_list)):
+        cluster = cluster_list[i]
+        
+        if(len(cluster.get_interactions() ) <= max_interactions):
+            
+            input_data = np.zeros([max_interactions, dimensionality_of_interaction])
+
+            interactions = cluster.get_interactions()
+            
+            for j in range(0, len(interactions)):
+                interaction = np.asarray(interactions[j].get_all())
+                input_data = np.insert(input_data, j, interaction, axis=0)
+
+            input_data.resize([max_interactions, dimensionality_of_interaction]) # resize cause I'm stupid and can't figure out how to assign a 1d inside a 2d array instead of inserting more rows
+            inputs[i] = input_data
+            labels[i] = cluster.get_gamma_count()
+        else:
+            print("Input size not large enough to contain all interaction points. Increase total allowed interactions per input set")
+            exit(1)
+
+    labels = labels - 1 # shift over gamma count to start at 0 so keras can understand (output layer indexing starts at 0).
+            
+    return inputs, labels
+
+# create a 3d array from the cluster list, but each input layer is sorted by distance from the origin
+def transform_cluter_list_into_sorted_3d(cluster_list, dimensionality_of_interaction, max_interactions):
 
     inputs = np.zeros([len(cluster_list), max_interactions, dimensionality_of_interaction])
     labels = np.zeros(len(cluster_list), dtype='i4')
@@ -388,12 +418,12 @@ def train_fixed_input(data):
     print("Successfully created training input and labels")    
 
     
-    n_hidden_1ayer = 128 # size of hidden layer
+    n_hidden_layer = 128 # size of hidden layer
     n_output_layer = 2
 
     model = keras.Sequential([
         keras.layers.Flatten(input_shape=(max_interactions, dimensionality_of_interaction)),
-        keras.layers.Dense(128, activation='relu'),
+        keras.layers.Dense(n_hidden_layer, activation='relu'),
         keras.layers.Dense(2)
     ])
 
@@ -491,9 +521,15 @@ def train_recurrent(data):
             
     print("Successfully created training input and labels")    
 
-    model = keras.Sequential()
-    model.add(keras.LSTM(2, input_shape=(1,4)))
-    model.add(keras.Dense(1))
+    n_hidden_layer = 32 # size of hidden layer
+    n_output_layer = 2
+    
+
+    model = keras.Sequential([
+        keras.layers.Bidirectional(keras.layers.LSTM(n_output_layer, return_sequences=True), input_shape=(max_interactions, dimensionality_of_interaction)),
+        keras.layers.Bidirectional( keras.layers.LSTM(n_hidden_layer) ),
+        keras.layers.Dense(2)
+    ])    
 
     model.compile(optimizer='adam',
               loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
@@ -526,11 +562,11 @@ def main():
     # clusters are used as the input to the neural net. A cluster contains a collection of interaction points, along with the total number of gammas needed
     # to produce the total energy seen from the cluster. 
 
-    train_fixed_input(data)    
+    #train_fixed_input(data)    
     
     #k_means_clustering(data)
 
-    #train_recurrent(data)
+    train_recurrent(data)
     
     
 
