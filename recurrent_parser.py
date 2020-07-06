@@ -196,7 +196,7 @@ def get_recurrent_model(data):
               metrics=['accuracy'])    
 
     print("Model go beep boop")
-    model.fit(train_inputs, train_labels, epochs=40)
+    model.fit(train_inputs, train_labels, epochs=20)
 
     test_loss, test_acc = model.evaluate(test_inputs, test_labels, verbose=2)
 
@@ -207,6 +207,14 @@ def get_recurrent_model(data):
 
 def parse_gammas(data, model):
 
+    test_cluster = np.zeros((data.get_max_interactions(), data.get_dimensionality_of_interaction()), dtype=float)
+    print(test_cluster)
+    
+    for cluster in data:
+        
+        
+
+    
 def main():
 
     files = ['out_2505.csv', 'out_1332.csv', 'out_1173.csv']
@@ -216,8 +224,8 @@ def main():
     
     data2 = DataWrangler(['out_2505.csv'], for_training=False)
 
-    model = get_recurrent_model(data_all)
-
+    #model = get_recurrent_model(data_all)
+    model = None
     parse_gammas(data2, model)
 
     
