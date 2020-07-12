@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from math import *
 import random
 
+import recurrent_parser
+
 # randomly select if something will be for testing the model (the negative being for training)
 def is_test(probability):
     return random.random() > probability
@@ -61,7 +63,7 @@ class Data:
                         else:
                             break
                     else:
-                        interaction = Interaction(float(row[0]), float(row[1]), float(row[2]), float(row[2]))
+                        interaction = Interaction(float(row[0]), float(row[1]), float(row[2]), float(row[3]))
                         if(active_on_train_list):
                             self.train_clusters[-1].add_interaction(interaction)
                         else:
@@ -225,6 +227,8 @@ class Interaction:
         self.y = y
         self.z = z
 
+        self.r = sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2))
+
     # find the distnce between interaction points
     def get_distance_from_other(self, interaction):
 
@@ -258,7 +262,7 @@ class Interaction:
 
     # returns all data in a list, in order [energy, x, y, z]    
     def get_all(self):
-        return [self.energy, self.x, self.y, self.z]    
+        return [self.energy, self.x, self.y, self.z, self.r]    
     # find the angle between two interaction points. The angle is relative to a line drawn from the origin
     # to the interaction point containing this function.
     def find_theta(self, interaction):
@@ -341,7 +345,7 @@ def train_recursive(cluster_list):
     pass
 
 
-def transform_cluter_list_into_3d(cluster_list, dimensionality_of_interaction, max_interactions):
+def transform_cluster_list_into_3d(cluster_list, dimensionality_of_interaction, max_interactions):
 
     inputs = np.zeros([len(cluster_list), max_interactions, dimensionality_of_interaction])
     labels = np.zeros(len(cluster_list), dtype='i4')
@@ -367,7 +371,7 @@ def transform_cluter_list_into_3d(cluster_list, dimensionality_of_interaction, m
             exit(1)
 
     labels = labels - 1 # shift over gamma count to start at 0 so keras can understand (output layer indexing starts at 0).
-            
+
     return inputs, labels
 
 # create a 3d array from the cluster list, but each input layer is sorted by distance from the origin
@@ -416,7 +420,6 @@ def train_fixed_input(data):
     
             
     print("Successfully created training input and labels")    
-
     
     n_hidden_layer = 128 # size of hidden layer
     n_output_layer = 2
@@ -508,7 +511,7 @@ def k_means_clustering(data):
 def train_recurrent(data):
 
     max_interactions = 20 # fixed size of input neurons, representing a cluster. It is expected that the total number of interactions in a cluster is less than this number
-    dimensionality_of_interaction = 4 # number of dimensions in an interaction. 4 would represent x, y, z, energy
+    dimensionality_of_interaction = 5 # number of dimensions in an interaction. 4 would represent x, y, z, energy
     
     # pull raw data out from clusters and interactions into a 2d array. Each row of the input array will be each a 1D list of every interaction, cycling in order of energy, x, y, z.
 
@@ -517,9 +520,9 @@ def train_recurrent(data):
 
     train_inputs, train_labels = transform_cluster_list_into_3d(train_list, dimensionality_of_interaction, max_interactions)
     test_inputs, test_labels = transform_cluster_list_into_3d(test_list, dimensionality_of_interaction, max_interactions)
-    
             
-    print("Successfully created training input and labels")    
+    print("Successfully created training input and labels")
+    
 
     n_hidden_layer = 32 # size of hidden layer
     n_output_layer = 2
@@ -542,6 +545,33 @@ def train_recurrent(data):
 
     print('\nTest accuracy:', test_acc)
 
+
+    return model
+
+
+def get_model():
+    file_names = ["out_1173.csv", "out_1332.csv", "out_2505.csv"]
+    file_read_limit = 10000 # max number of clusters to read from a file. Zero is no limit
+    test_porportion = 0.2 # porportion of the data used for testing
+    
+    data = Data(file_names, file_read_limit, test_porportion)
+
+    print("Total clusters read from files: ", data.get_cluster_count())
+    print("Train clusters read from files: ", data.get_train_count())
+    print("Test clusters read from files : ", data.get_test_count())
+
+    
+    
+    #data.normalize_train_test()
+    
+    # clusters are used as the input to the neural net. A cluster contains a collection of interaction points, along with the total number of gammas needed
+    # to produce the total energy seen from the cluster. 
+
+    #train_fixed_input(data)    
+    
+    #k_means_clustering(data)
+
+    return train_recurrent(data)    
 
 def main():
     
@@ -566,8 +596,10 @@ def main():
     
     #k_means_clustering(data)
 
-    train_recurrent(data)
+    model = train_recurrent(data)
     
+    
+
     
 
 if(__name__ == "__main__"):
