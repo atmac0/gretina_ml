@@ -279,6 +279,11 @@ def parse_gammas(data, model):
 
     num_predictions = 0
     num_correct = 0
+
+    # these are for gathering calibration statistics
+    certainty_of_correct = []
+    certainty_of_incorrect = []
+    
     
     # refactor this to just pipe in all possible combos at once into the model
     for index in range(0, len(dataset)):
@@ -288,9 +293,9 @@ def parse_gammas(data, model):
         
         range_list = list(range(0, num_interactions(cluster)))
 
-        single_gamma_probability = []
-
         all_possible_labels = []
+
+        all_clusters = []
         
         # generate all possible labels, then find the label that is most probable to be created by 1 gamma
         for i in range(1, num_interactions(cluster)):
@@ -310,36 +315,32 @@ def parse_gammas(data, model):
                     
                 test_cluster.extend([[0] * dimensionality_of_interaction] * (max_interactions - len(test_cluster))) # pad the list with empty interactions so it can be initialized to a rectangular numpy array
 
-                test_cluster = [test_cluster] # make it 3D
-                test_cluster = np.array(test_cluster)
-                
-                x = model.predict(test_cluster)
-                single_gamma_probability.append(x[0][0])
+                all_clusters.append(test_cluster)
+
                 all_possible_labels.append(possible_label)
 
-        if(len(single_gamma_probability) >= 2):
-            max_prob_index = single_gamma_probability.index(max(single_gamma_probability[1:]))
-        elif(len(single_gamma_probability) >= 1):
-            max_prob_index = single_gamma_probability.index(max(single_gamma_probability))
+        all_clusters = np.asarray(all_clusters)
+        predictions = model.predict(all_clusters)
+
+        single_gamma_probabilities = predictions[:,0].tolist()
+
+        if(len(single_gamma_probabilities) >= 2):
+            # delete first element since it was predicted on a single interaction point. This needs to be deleted since
+            # a single interaction points is predicted very likely to come from a single gamma
+            single_gamma_probabilities.pop(0)
+            max_prob_index = single_gamma_probabilities.index(max(single_gamma_probabilities[1:]))
+        elif(len(single_gamma_probabilities) == 1):
+            max_prob_index = 0
+            continue
         else:
             continue
 
-        #print("MAX PROB INDEX: ", max_prob_index)
-        #print("LEN POSSIBLE LABELS: ", len(possible_labels))
-        #print("LEN probs: ", len(single_gamma_probability))
-        #print("PROBS: ", single_gamma_probability)
-        #exit(0)
-        #print(all_possible_labels)
-        #print(len(all_possible_labels))
-        #print(max_prob_index)
         final_label = all_possible_labels[max_prob_index]
 
-        #print("LABEL:       ", label)
-        #print("FINAL LABEL: ", final_label)
-        #print("max prob:    ", single_gamma_probability[max_prob_index])
-        #exit(0)
+        
         if(final_label == label):
             num_correct = num_correct + 1
+            certainty_of_correct.append(single_gamma_probabilities[max_prob_index])
         num_predictions = num_predictions + 1
         print("accuracy: ", num_correct/num_predictions)
 
@@ -355,7 +356,7 @@ def main():
     #data_all = DataWrangler(files, max_clusters_per_file=max_clusters_per_file_)
 
     data2 = DataWrangler(['out_2505.csv'], for_training=False)
-    
+    data1 = DataWrangler(['out_1173.csv', 'out_1332.csv'], for_training=False)    
     #model = get_recurrent_model(data_all)
     #model = get_classification_model(data_all)
 
