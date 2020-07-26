@@ -172,7 +172,7 @@ class DataWrangler:
         # prediction of the number of gammas a single interaction was produced by is always strongly predicted as 1.
         for i in range(1, len(cluster)):
             possible_labels = list(itertools.combinations(range_list, i))
-
+            
             for possible_label in possible_labels:
                 # the first element of the label must be the first interaction in the cluster, so if we have reached the combinations that do not contain the 0th
                 # index as the first element we can skip the rest
@@ -324,8 +324,9 @@ def parse_gammas(data, model):
     num_correct = 0
 
     # these are for gathering calibration statistics
-    correct_data = [["max probability", "final_label", "max_prob_index"]]
-    incorrect_data = [["max probability", "final_label", "max_prob_index"]]
+    csv_header = ["max probability", "max_prob_index", "num_interactions",  "final_label"]
+    correct_data = [csv_header]
+    incorrect_data = [csv_header]
     
     
     # refactor this to just pipe in all possible combos at once into the model
@@ -335,15 +336,13 @@ def parse_gammas(data, model):
         label = labels[index]
         
         range_list = list(range(0, num_interactions(cluster)))
-
         all_possible_labels = []
 
         all_clusters = []
-        
         # generate all possible labels, then find the label that is most probable to be created by 1 gamma
-        for i in range(2, num_interactions(cluster)):
+        for i in range(1, num_interactions(cluster) + 1):
+            
             possible_labels = list(itertools.combinations(range_list, i))
-
             # iterate through all possible labels
             for possible_label in possible_labels:
 
@@ -351,6 +350,10 @@ def parse_gammas(data, model):
                 # since we are looking for the interactions, combined with the 0th interaction that make 1 gamma
                 if(possible_label[0] != 0):
                     break
+
+                # if there is more than one interaction point, skip the label (0, )
+                if((num_interactions(cluster) > 1) and (len(possible_label) == 1)):
+                    continue
                 
                 test_cluster = []
                 for j in possible_label:
@@ -363,39 +366,29 @@ def parse_gammas(data, model):
                 all_possible_labels.append(possible_label)
 
         all_clusters = np.asarray(all_clusters)
-        try:
-            predictions = model.predict(all_clusters)
-        except:
-            print("EXCEPTION HIT")
-            print(all_clusters)
-            continue
 
+        # each prediction is indexable by the certainty of the number of gammas needed to produce that configuration of interaction points.
+        predictions = model.predict(all_clusters)
+        
         single_gamma_probabilities = predictions[:,0].tolist()
 
-        
-        if(len(single_gamma_probabilities) == 0):
-            print(single_gamma_probabilites)
-            print(predicitons)
-            print(all_clusters)
-            exit(0)
-            continue
-        
+        # get the index of the prediction most likely to be from a single gamma
+        max_prob_index = single_gamma_probabilities.index(max(single_gamma_probabilities))
 
-        max_prob_index = single_gamma_probabilities.index(max(single_gamma_probabilities[1:]))
-
-
+        # get the label of the combination of interactions most likely to be one gamma ray
         final_label = all_possible_labels[max_prob_index]
-        
+
+        csv_data = [str(single_gamma_probabilities[max_prob_index]), str(max_prob_index), str(num_interactions(cluster)), str(final_label)]
         if(final_label == label):
             num_correct = num_correct + 1
-            #correct_data.append([str(single_gamma_probabilities[max_prob_index]), str(final_label), str(max_prob_index)])
-            correct_data.append(list([single_gamma_probabilities[max_prob_index], max_prob_index].append(x) for x in final_label))
+            correct_data.append(csv_data)
         else:
-            #incorrect_data.append([str(single_gamma_probabilities[max_prob_index]), str(final_label), str(max_prob_index)])
-            incorrect_data.append(list([single_gamma_probabilities[max_prob_index], max_prob_index].append(x) for x in final_label))
-        num_predictions = num_predictions + 1
-        print("accuracy: ", num_correct/num_predictions)
+            incorrect_data.append(csv_data)
 
+        num_predictions = num_predictions + 1
+        print('accuracy: {0}\r'.format(num_correct/num_predictions)),
+
+    print()
     print("TOTAL NUM PREDICTIONS: ", num_predictions)
     print("TOTAL CORRECT:         ", num_correct)
     print("ACCURACY:              ", num_correct/num_predictions)
@@ -408,8 +401,8 @@ def main():
     max_clusters_per_file_ = 4000
     
     #data_all = DataWrangler(files, max_clusters_per_file=max_clusters_per_file_)
-    #data2505 = DataWrangler(['out_2505.csv'], expected_energies = [1173, 1332], for_training=False)
-    data1173 = DataWrangler(['out_1173.csv'], expected_energies = [1173], for_training=False)
+    data2505 = DataWrangler(['out_2505.csv'], expected_energies = [1173, 1332], for_training=False)
+    #data1173 = DataWrangler(['out_1173.csv'], expected_energies = [1173], for_training=False)
     #data1332 = DataWrangler(['out_1332.csv'], expected_energies = [1332], for_training=False)
     
     #model = get_recurrent_model(data_all)
@@ -420,16 +413,19 @@ def main():
     #model.save('recurrent_model_100_epochs')
     model = keras.models.load_model('recurrent_model_100_epochs/')
 
-    #certainty_correct_2505, certainty_incorrect_2505 = parse_gammas(data2505, model)
-    certainty_correct_1173, certainty_incorrect_1173 = parse_gammas(data1173, model)
+    certainty_correct_2505, certainty_incorrect_2505 = parse_gammas(data2505, model)
+    #certainty_correct_1173, certainty_incorrect_1173 = parse_gammas(data1173, model)
     #certainty_correct_1332, certainty_incorrect_1332 = parse_gammas(data1332, model)
-    print(certainty_correct_1173)
+    #print(certainty_correct_1173)
     #print(certainty_correct_2505)
     #print(certainty_correct_1173)
     #print(certainty_incorrect_1173)
-    np.savetxt("certainty_correct_2505.csv", certainty_correct_2505, delimiter=",")
-    #np.savetxt("certainty_incorrect_2505.csv", certainty_incorrect_2505, delimiter=",")
 
+    np.savetxt("certainty_correct_2505.csv", certainty_correct_2505, delimiter="|", fmt="%s")
+    np.savetxt("certainty_incorrect_2505.csv", certainty_incorrect_2505, delimiter="|", fmt="%s")
+
+    #np.savetxt("certainty_correct_1173.csv", certainty_correct_1173, delimiter="|", fmt="%s")
+    #np.savetxt("certainty_incorrect_1173.csv", certainty_incorrect_1173, delimiter="|", fmt="%s")
     
 if(__name__ == "__main__"):
     main()
