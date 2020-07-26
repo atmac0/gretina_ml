@@ -20,11 +20,16 @@ import neural_net_gamma_count
 
 class DataWrangler:
 
-    def __init__(self, filenames, max_clusters_per_file=0, for_training=True):
+    def __init__(self, filenames, max_clusters_per_file=0, for_training=True, expected_energies=None):
+
+        if(for_training == False and expected_energies == None):
+            print("Invalid training configuration!")
+            exit(0)    
+        
         self.dataset = []
         self.labels  = []
 
-        self.energies = [1173, 1332] # possible energies present, used for generating the labels
+        self.energies = expected_energies # possible energies present, used for generating the labels
         self.deviance = 3 # distance in keV from a measured value that is considered the same energy
         
         self.max_interactions = 20
@@ -57,6 +62,8 @@ class DataWrangler:
 
         data_len = len(self.dataset)
 
+        print("Finished initializing dataset.")
+
     def normalize_dataset(self):
         pass
         
@@ -85,40 +92,62 @@ class DataWrangler:
     # an interaction is a measured event in the detector
     # the dimension of interaction is at a minimum energy, x, y, and z coordinates. Other dimensions may be calculated and added on (like total distance from origin). 
     def create_dataset(self, filenames, for_training):
+
+        if(for_training):
+            print("Creating dataset and labels to be used for training the model...")
+        else:
+            print("Creating dataset and labels to be used for testing the model...")
+
+        if(self.max_clusters_per_file == 0):
+            print("Reading all clusters from the file(s)...")
+        else:
+            print("Reading " + str(self.max_clusters_per_file) + " clusters per file...")
+            
+            
         for filename in filenames:
+            
+            print("Sorting through file " + str(filename) + "...")
+            
             cluster_counter = 0
             with open(filename, newline='') as csvfile:
                 csvreader = csv.reader(csvfile, delimiter=' ', quotechar='|')
+
+                # the first line of the file is assumed to be a single digit which contains the number of gammas used to produce the interactions seen in the file
                 gamma_count = int(next(csvreader, None)[0])
-                
+
+                # the cluster starts as an empty list, with each interaction point appended
                 cluster = []
         
                 for row in csvreader:
                     row = row[0].split(',')
                     row = [float(i) for i in row]
+
+                    # if a single digit of -1 is reached, the end of the cluster has been reached
                     if(row[0] == -1):
+
+                        # check if there were more interactions than allowed per clusted. This is needed because tensorflow requires arrays of a fixed size
+                        # as an input, so a hard maximum is needed for that array size.
                         if(len(cluster) <= self.max_interactions):
                             cluster = self.sort_cluster(cluster)
-                            
-                            if(for_training == False):
-                                label = self.create_label(cluster)
+
+                            # if the dataset is for training, assign the number of gammas as the label
+                            if(for_training):
+                                label = gamma_count
+                            # if the dataset is for testing, create a testing label
                             else:
-                                if(gamma_count == 1):
-                                    label = gamma_count
-                                elif(self.create_label(cluster)):
-                                    label = gamma_count
-                                else:
-                                    label = None
-                                
+                                label = self.create_testing_label(cluster)
 
-                            cluster.extend([[float(0)] * self.dimensionality_of_interaction] * (self.max_interactions - len(cluster))) # pad the list with empty interactions so it can be initialized to a rectangular numpy array
+                            # pad the list with empty interactions so it can be initialized to a rectangular numpy array
+                            cluster.extend([[float(0)] * self.dimensionality_of_interaction] * (self.max_interactions - len(cluster))) 
 
+                            # none in the case that no testing label could be found
                             if(label != None):
                                 self.dataset.append(cluster)
                                 self.labels.append(label)
                                 cluster_counter = cluster_counter + 1
                         else:
                             print("There were too many interactions in that cluster. Consider raising the maximum number of interactions allowed in an input.")
+                            
                         cluster = []
 
                         # go to next file if max clusters read from current file
@@ -133,33 +162,47 @@ class DataWrangler:
         return sorted(cluster, key=itemgetter(4)) # itemgetter of 4 selects the distance from the origin as the value to be sorted
 
     # labels are going to be a list, in order, of the indices in the cluster that make up the gamma ray of the first interaction point
-    def create_label(self, cluster):
-        
+    def create_testing_label(self, cluster):
+
+        # create a range from 0 to the number of interactions in the cluster.
         range_list = list(range(0, len(cluster)))
 
+        # generate all possible combinations of interactions that have the interaction nearest to the origin contained within it (the interaction at the 0th
+        # index of the cluster). The combination containing only the interaction of the interaction nearest to the origin will not be included, because the
+        # prediction of the number of gammas a single interaction was produced by is always strongly predicted as 1.
         for i in range(1, len(cluster)):
             possible_labels = list(itertools.combinations(range_list, i))
+
             for possible_label in possible_labels:
+                # the first element of the label must be the first interaction in the cluster, so if we have reached the combinations that do not contain the 0th
+                # index as the first element we can skip the rest
                 if(possible_label[0] != 0):
                     break
 
+                # sum up the energy by indexing the cluster with the indices from the label.
                 energy_sum = 0
                 for index in possible_label:
                     energy_sum = energy_sum + cluster[index][0]
 
+                # if the energy is found in the expected energy list (within some boundary), return the label as the correct label
                 if(self.energy_in_list(energy_sum, self.energies)):
                     return possible_label
+
+        # if no combination of interactions produces an expected energy, return None
         return None
-    
+
+    # find the distance of the interaction from the origin
     def distance_from_origin(self, x, y, z):
         return sqrt( pow(x, 2) + pow(y, 2) + pow(z, 2) )
 
+    # find if an energy is in a list, within some deviance
     def energy_in_list(self, energy, lst):
         for i in lst:
             if(self.near_value(i, energy)):
                 return True
         return False
 
+    # find if a number is within some deviance of another number
     def near_value(self, val, number):
         if( (val - self.deviance) < number < (val + self.deviance) ):
             return True
@@ -281,8 +324,8 @@ def parse_gammas(data, model):
     num_correct = 0
 
     # these are for gathering calibration statistics
-    certainty_of_correct = []
-    certainty_of_incorrect = []
+    correct_data = [["max probability", "final_label", "max_prob_index"]]
+    incorrect_data = [["max probability", "final_label", "max_prob_index"]]
     
     
     # refactor this to just pipe in all possible combos at once into the model
@@ -298,7 +341,7 @@ def parse_gammas(data, model):
         all_clusters = []
         
         # generate all possible labels, then find the label that is most probable to be created by 1 gamma
-        for i in range(1, num_interactions(cluster)):
+        for i in range(2, num_interactions(cluster)):
             possible_labels = list(itertools.combinations(range_list, i))
 
             # iterate through all possible labels
@@ -308,7 +351,7 @@ def parse_gammas(data, model):
                 # since we are looking for the interactions, combined with the 0th interaction that make 1 gamma
                 if(possible_label[0] != 0):
                     break
-
+                
                 test_cluster = []
                 for j in possible_label:
                     test_cluster.append(cluster[j].tolist())
@@ -320,33 +363,44 @@ def parse_gammas(data, model):
                 all_possible_labels.append(possible_label)
 
         all_clusters = np.asarray(all_clusters)
-        predictions = model.predict(all_clusters)
+        try:
+            predictions = model.predict(all_clusters)
+        except:
+            print("EXCEPTION HIT")
+            print(all_clusters)
+            continue
 
         single_gamma_probabilities = predictions[:,0].tolist()
 
-        if(len(single_gamma_probabilities) >= 2):
-            # delete first element since it was predicted on a single interaction point. This needs to be deleted since
-            # a single interaction points is predicted very likely to come from a single gamma
-            single_gamma_probabilities.pop(0)
-            max_prob_index = single_gamma_probabilities.index(max(single_gamma_probabilities[1:]))
-        elif(len(single_gamma_probabilities) == 1):
-            max_prob_index = 0
+        
+        if(len(single_gamma_probabilities) == 0):
+            print(single_gamma_probabilites)
+            print(predicitons)
+            print(all_clusters)
+            exit(0)
             continue
-        else:
-            continue
+        
+
+        max_prob_index = single_gamma_probabilities.index(max(single_gamma_probabilities[1:]))
+
 
         final_label = all_possible_labels[max_prob_index]
-
         
         if(final_label == label):
             num_correct = num_correct + 1
-            certainty_of_correct.append(single_gamma_probabilities[max_prob_index])
+            #correct_data.append([str(single_gamma_probabilities[max_prob_index]), str(final_label), str(max_prob_index)])
+            correct_data.append(list([single_gamma_probabilities[max_prob_index], max_prob_index].append(x) for x in final_label))
+        else:
+            #incorrect_data.append([str(single_gamma_probabilities[max_prob_index]), str(final_label), str(max_prob_index)])
+            incorrect_data.append(list([single_gamma_probabilities[max_prob_index], max_prob_index].append(x) for x in final_label))
         num_predictions = num_predictions + 1
         print("accuracy: ", num_correct/num_predictions)
 
     print("TOTAL NUM PREDICTIONS: ", num_predictions)
     print("TOTAL CORRECT:         ", num_correct)
     print("ACCURACY:              ", num_correct/num_predictions)
+
+    return np.asarray(correct_data), np.asarray(incorrect_data)
     
 def main():
 
@@ -354,9 +408,10 @@ def main():
     max_clusters_per_file_ = 4000
     
     #data_all = DataWrangler(files, max_clusters_per_file=max_clusters_per_file_)
-
-    data2 = DataWrangler(['out_2505.csv'], for_training=False)
-    data1 = DataWrangler(['out_1173.csv', 'out_1332.csv'], for_training=False)    
+    #data2505 = DataWrangler(['out_2505.csv'], expected_energies = [1173, 1332], for_training=False)
+    data1173 = DataWrangler(['out_1173.csv'], expected_energies = [1173], for_training=False)
+    #data1332 = DataWrangler(['out_1332.csv'], expected_energies = [1332], for_training=False)
+    
     #model = get_recurrent_model(data_all)
     #model = get_classification_model(data_all)
 
@@ -365,7 +420,15 @@ def main():
     #model.save('recurrent_model_100_epochs')
     model = keras.models.load_model('recurrent_model_100_epochs/')
 
-    parse_gammas(data2, model)
+    #certainty_correct_2505, certainty_incorrect_2505 = parse_gammas(data2505, model)
+    certainty_correct_1173, certainty_incorrect_1173 = parse_gammas(data1173, model)
+    #certainty_correct_1332, certainty_incorrect_1332 = parse_gammas(data1332, model)
+    print(certainty_correct_1173)
+    #print(certainty_correct_2505)
+    #print(certainty_correct_1173)
+    #print(certainty_incorrect_1173)
+    np.savetxt("certainty_correct_2505.csv", certainty_correct_2505, delimiter=",")
+    #np.savetxt("certainty_incorrect_2505.csv", certainty_incorrect_2505, delimiter=",")
 
     
 if(__name__ == "__main__"):
