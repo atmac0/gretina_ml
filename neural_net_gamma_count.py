@@ -408,7 +408,7 @@ def transform_cluter_list_into_sorted_3d(cluster_list, dimensionality_of_interac
 def train_fixed_input(data):
 
     max_interactions = 20 # fixed size of input neurons, representing a cluster. It is expected that the total number of interactions in a cluster is less than this number
-    dimensionality_of_interaction = 4 # number of dimensions in an interaction. 4 would represent x, y, z, energy
+    dimensionality_of_interaction = 5 # number of dimensions in an interaction. 4 would represent x, y, z, energy
     
     # pull raw data out from clusters and interactions into a 2d array. Each row of the input array will be each a 1D list of every interaction, cycling in order of energy, x, y, z.
 
@@ -442,7 +442,7 @@ def train_fixed_input(data):
 
     print('\nTest accuracy:', test_acc)
     
-
+    return model
     
 
 def train_full_array_input(cluster_list):
@@ -567,11 +567,12 @@ def get_model():
     # clusters are used as the input to the neural net. A cluster contains a collection of interaction points, along with the total number of gammas needed
     # to produce the total energy seen from the cluster. 
 
-    #train_fixed_input(data)    
+
     
     #k_means_clustering(data)
-
-    return train_recurrent(data)    
+    
+    return train_fixed_input(data)    
+    #return train_recurrent(data)    
 
 def main():
     
@@ -596,7 +597,7 @@ def main():
     
     #k_means_clustering(data)
 
-    model = train_recurrent(data)
+    #model = train_recurrent(data)
     
     
 

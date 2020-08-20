@@ -7,7 +7,9 @@ import csv
 import numpy as np
 
 import seaborn as sns
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.use('TkAgg')
 
 from math import *
 import random
@@ -139,12 +141,12 @@ class DataWrangler:
 
                             # pad the list with empty interactions so it can be initialized to a rectangular numpy array
                             cluster.extend([[float(0)] * self.dimensionality_of_interaction] * (self.max_interactions - len(cluster))) 
-
                             # none in the case that no testing label could be found
                             if(label != None):
                                 self.dataset.append(cluster)
                                 self.labels.append(label)
                                 cluster_counter = cluster_counter + 1
+                                print('Sorted {0} clusters'.format(cluster_counter))
                         else:
                             print("There were too many interactions in that cluster. Consider raising the maximum number of interactions allowed in an input.")
                             
@@ -170,7 +172,7 @@ class DataWrangler:
         # generate all possible combinations of interactions that have the interaction nearest to the origin contained within it (the interaction at the 0th
         # index of the cluster). The combination containing only the interaction of the interaction nearest to the origin will not be included, because the
         # prediction of the number of gammas a single interaction was produced by is always strongly predicted as 1.
-        for i in range(1, len(cluster)):
+        for i in range(1, len(cluster) + 1):
             possible_labels = list(itertools.combinations(range_list, i))
             
             for possible_label in possible_labels:
@@ -324,10 +326,10 @@ def parse_gammas(data, model):
     num_correct = 0
 
     # these are for gathering calibration statistics
-    csv_header = ["max probability", "max_prob_index", "num_interactions",  "final_label"]
+    csv_header = ["max probability", "max_prob_index", "num_interactions",  "predicted_label", "correct_label"]
     correct_data = [csv_header]
     incorrect_data = [csv_header]
-    
+    recovered_gammas = []
     
     # refactor this to just pipe in all possible combos at once into the model
     for index in range(0, len(dataset)):
@@ -378,13 +380,17 @@ def parse_gammas(data, model):
         # get the label of the combination of interactions most likely to be one gamma ray
         final_label = all_possible_labels[max_prob_index]
 
-        csv_data = [str(single_gamma_probabilities[max_prob_index]), str(max_prob_index), str(num_interactions(cluster)), str(final_label)]
+        # recover the interactions of the predicted gamma, and store it
+        retrieved_interactions = [cluster[i] for i in final_label]
+        recovered_gammas.append(retrieved_interactions)
+
+        csv_data = [str(single_gamma_probabilities[max_prob_index]), str(max_prob_index), str(num_interactions(cluster)), str(final_label), str(label)]
         if(final_label == label):
             num_correct = num_correct + 1
             correct_data.append(csv_data)
         else:
             incorrect_data.append(csv_data)
-
+            
         num_predictions = num_predictions + 1
         print('accuracy: {0}\r'.format(num_correct/num_predictions)),
 
@@ -393,39 +399,77 @@ def parse_gammas(data, model):
     print("TOTAL CORRECT:         ", num_correct)
     print("ACCURACY:              ", num_correct/num_predictions)
 
-    return np.asarray(correct_data), np.asarray(incorrect_data)
+    return recovered_gammas, np.asarray(correct_data), np.asarray(incorrect_data)
+
+
+def get_cluster_energy(cluster):
+    cluster_energy = 0
+    for interaction in cluster:
+        cluster_energy = cluster_energy + interaction[0]
+
+    return cluster_energy
+
+def create_histogram(lst, label):
+
+    max_allowed = 2800
+    lst = [x for x in lst if x < max_allowed]
     
+    file_name = label + '.png'
+
+    n, bins, patches = plt.hist(lst, facecolor='blue', alpha=0.5)
+    plt.savefig(file_name, dpi=300)
+    plt.clf()
+
+def analyze_cluster_lists(label, cluster_lists):
+    cluster_energies = []
+    
+    for lst in cluster_lists:
+        for cluster in lst:
+            cluster_energies.append(get_cluster_energy(cluster))
+
+    with open(label + '.csv', 'w', newline='') as csvfile:
+        csvwriter = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        for energy in cluster_energies:
+                csvwriter.writerow([energy])
+                
+    create_histogram(cluster_energies, label)
+            
+
 def main():
 
     files = ['out_1173.csv', 'out_1332.csv', 'out_2505.csv']
-    max_clusters_per_file_ = 4000
+    max_clusters_per_file_ = 10000
     
     #data_all = DataWrangler(files, max_clusters_per_file=max_clusters_per_file_)
-    data2505 = DataWrangler(['out_2505.csv'], expected_energies = [1173, 1332], for_training=False)
-    #data1173 = DataWrangler(['out_1173.csv'], expected_energies = [1173], for_training=False)
-    #data1332 = DataWrangler(['out_1332.csv'], expected_energies = [1332], for_training=False)
+    data2505 = DataWrangler(['out_2505.csv'], expected_energies = [1173, 1332], for_training=False, max_clusters_per_file=max_clusters_per_file_)
+    data1173 = DataWrangler(['out_1173.csv'], expected_energies = [1173], for_training=False, max_clusters_per_file=max_clusters_per_file_)
+    data1332 = DataWrangler(['out_1332.csv'], expected_energies = [1332], for_training=False, max_clusters_per_file=max_clusters_per_file_)
     
     #model = get_recurrent_model(data_all)
     #model = get_classification_model(data_all)
 
 
     #model = neural_net_gamma_count.get_model()
-    #model.save('recurrent_model_100_epochs')
-    model = keras.models.load_model('recurrent_model_100_epochs/')
+    #model.save('classification_model_100_epochs')
+    
+    model_recurrent = keras.models.load_model('recurrent_model_100_epochs/')
+    #model_classification = keras.models.load_model('classification_model_100_epochs/')
 
-    certainty_correct_2505, certainty_incorrect_2505 = parse_gammas(data2505, model)
-    #certainty_correct_1173, certainty_incorrect_1173 = parse_gammas(data1173, model)
-    #certainty_correct_1332, certainty_incorrect_1332 = parse_gammas(data1332, model)
-    #print(certainty_correct_1173)
-    #print(certainty_correct_2505)
-    #print(certainty_correct_1173)
-    #print(certainty_incorrect_1173)
+    clusters_2505, _ = data2505.get_dataset()
+    clusters_1173, _ = data1173.get_dataset()
+    clusters_1332, _ = data1332.get_dataset()
+    
+    recovered_2505, recurrent_certainty_correct_2505, recurrent_certainty_incorrect_2505 = parse_gammas(data2505, model_recurrent)
+    recovered_1173, recurrent_certainty_correct_1173, recurrent_certainty_incorrect_1173 = parse_gammas(data1173, model_recurrent)
+    recovered_1332, recurrent_certainty_correct_1332, recurrent_certainty_incorrect_1332 = parse_gammas(data1332, model_recurrent)
 
-    np.savetxt("certainty_correct_2505.csv", certainty_correct_2505, delimiter="|", fmt="%s")
-    np.savetxt("certainty_incorrect_2505.csv", certainty_incorrect_2505, delimiter="|", fmt="%s")
+    analyze_cluster_lists("2505_parsed", [recovered_2505])
+    analyze_cluster_lists("2505_raw", [clusters_2505])    
+    analyze_cluster_lists("all_parsed", [recovered_2505, recovered_1173, recovered_1332])
+    analyze_cluster_lists("all_raw", [clusters_2505, clusters_1173, clusters_1332])
+    analyze_cluster_lists("non2505_parsed", [recovered_1173, recovered_1332])
+    analyze_cluster_lists("non2505_raw", [clusters_1173, clusters_1332])
 
-    #np.savetxt("certainty_correct_1173.csv", certainty_correct_1173, delimiter="|", fmt="%s")
-    #np.savetxt("certainty_incorrect_1173.csv", certainty_incorrect_1173, delimiter="|", fmt="%s")
     
 if(__name__ == "__main__"):
     main()
