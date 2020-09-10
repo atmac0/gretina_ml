@@ -416,7 +416,7 @@ def create_histogram(lst, label):
     
     file_name = label + '.png'
 
-    n, bins, patches = plt.hist(lst, facecolor='blue', alpha=0.5)
+    n, bins, patches = plt.hist(lst, bins=max_allowed, facecolor='blue', alpha=0.5)
     plt.savefig(file_name, dpi=300)
     plt.clf()
 
