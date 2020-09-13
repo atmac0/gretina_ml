@@ -3,6 +3,8 @@ from tensorflow import keras
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import normalize
 
+import time
+
 import csv
 import numpy as np
 
@@ -22,9 +24,9 @@ import neural_net_gamma_count
 
 class DataWrangler:
 
-    def __init__(self, filenames, max_clusters_per_file=0, for_training=True, expected_energies=None):
+    def __init__(self, filenames, max_clusters_per_file=0, is_training=True, expected_energies=None, randomize=True, normalize=True):
 
-        if(for_training == False and expected_energies == None):
+        if(is_training == False and expected_energies == None):
             print("Invalid training configuration!")
             exit(0)    
         
@@ -40,41 +42,43 @@ class DataWrangler:
         self.train_porportion = 0.8
         self.max_clusters_per_file = max_clusters_per_file
 
-
-        if(for_training):
-            self.create_dataset( filenames, for_training )
+        if(is_training):
+            self.create_dataset( filenames, is_training )
 
             self.dataset = np.asarray( self.dataset )
             self.labels  = np.asarray( self.labels )
+
+            if(normalize):
+                self.normalize_dataset()
             
             # shuffle the train and test data the same way by resetting numpy's RNG state for each shuffle
-            rng_state = np.random.get_state()
-            np.random.shuffle(self.dataset)
-
-            np.random.set_state(rng_state)
-            np.random.shuffle(self.labels)
+            if(randomize):
+                rng_state = np.random.get_state()
+                np.random.shuffle(self.dataset)
+                np.random.set_state(rng_state)
+                np.random.shuffle(self.labels)
             
         else:
-            self.create_dataset( filenames, for_training )
+            self.create_dataset( filenames, is_training )
             self.dataset = np.asarray( self.dataset )
             self.labels  = np.asarray( self.labels )
 
-
-        #self.normalize_dataset()
-
+        self.labels = self.labels - 1 # shift over gamma count to start at 0 so keras can understand (output layer indexing starts at 0).
         data_len = len(self.dataset)
-
+        
         print("Finished initializing dataset.")
 
     def normalize_dataset(self):
-        pass
-        
+        self.dataset = keras.utils.normalize(self.dataset)
+
+    # a fix sized 2d array is used to store all interactions in a cluster. This returns the width of that array
     def get_dimensionality_of_interaction(self):
         return self.dimensionality_of_interaction
 
+    # a fix sized 2d array is used to store all interactions in a cluster. This returns the length of that array
     def get_max_interactions(self):
         return self.max_interactions
-    
+
     def get_training_dataset(self):
         num_train = int(len(self.labels) * self.train_porportion)
 
@@ -93,9 +97,9 @@ class DataWrangler:
     # a cluster is a set of related interaction points
     # an interaction is a measured event in the detector
     # the dimension of interaction is at a minimum energy, x, y, and z coordinates. Other dimensions may be calculated and added on (like total distance from origin). 
-    def create_dataset(self, filenames, for_training):
+    def create_dataset(self, filenames, is_training):
 
-        if(for_training):
+        if(is_training):
             print("Creating dataset and labels to be used for training the model...")
         else:
             print("Creating dataset and labels to be used for testing the model...")
@@ -133,7 +137,7 @@ class DataWrangler:
                             cluster = self.sort_cluster(cluster)
 
                             # if the dataset is for training, assign the number of gammas as the label
-                            if(for_training):
+                            if(is_training):
                                 label = gamma_count
                             # if the dataset is for testing, create a testing label
                             else:
@@ -224,7 +228,7 @@ def get_recurrent_model(data):
     model = keras.Sequential([
         keras.layers.Bidirectional(keras.layers.LSTM(n_output_layer, return_sequences=True), input_shape=(max_interactions, dimensionality_of_interaction)),
         keras.layers.Bidirectional( keras.layers.LSTM(n_hidden_layer) ),
-        keras.layers.Dense(2)
+        keras.layers.Dense(n_output_layer, activation='softmax')
     ])    
 
     model.compile(optimizer='adam',
@@ -238,73 +242,7 @@ def get_recurrent_model(data):
 
     print('\nTest accuracy:', test_acc)
 
-
     return model
-        
-
-# use interactions of cluster as 1d array. Appends 0's until the array reaches cluster size. Put into a simple neural network and train.
-def get_classification_model(data):
-
-    max_interactions              = data.get_max_interactions()
-    dimensionality_of_interaction = data.get_dimensionality_of_interaction()
-
-    train_inputs, train_labels, test_inputs, test_labels = data.get_training_dataset()
-
-
-
-
-
-    assert not np.any(np.isnan(train_inputs))
-    exit(0)
-    
-
-    train_shape=train_inputs.shape
-    test_shape=test_inputs.shape
-    temp_train_inputs = np.empty([train_shape[0], train_shape[1], train_shape[2]-1])
-    temp_test_inputs  = np.empty([test_shape[0], test_shape[1], test_shape[2]-1])
-
-
-    for i in range(0, train_shape[0]):
-        for j in range(0, 20):
-            for k in range(0, 4):
-                temp_train_inputs[i][j][k] = train_inputs[i][j][k]
-
-    for i in range(0, test_shape[0]):
-        for j in range(0, 20):
-            for k in range(0, 4):
-                temp_test_inputs[i][j][k] = test_inputs[i][j][k]
-
-
-    #train_inputs = temp_train_inputs
-    #test_inputs = temp_test_inputs
-    
-
-
-    
-    print("Successfully obtained training input and labels")    
-    
-    n_hidden_layer = 128 # size of hidden layer
-    n_output_layer = 2
-
-    model = keras.Sequential([
-        keras.layers.Flatten(input_shape=(max_interactions, dimensionality_of_interaction-1)),
-        keras.layers.Dense(n_hidden_layer, activation='relu'),
-        keras.layers.Dense(2)
-    ])
-
-    model.compile(optimizer='adam',
-              loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-              metrics=['accuracy'])
-
-
-    print("Model go beep boop")
-    model.fit(train_inputs, train_labels, epochs=20)
-
-    test_loss, test_acc = model.evaluate(test_inputs, test_labels, verbose=2)
-
-    print('\nTest accuracy:', test_acc)
-    exit(0)
-
         
 # get num of interactions, barred the padding
 def num_interactions(cluster):
@@ -343,7 +281,7 @@ def parse_gammas(data, model):
         all_clusters = []
         # generate all possible labels, then find the label that is most probable to be created by 1 gamma
         for i in range(1, num_interactions(cluster) + 1):
-            
+             
             possible_labels = list(itertools.combinations(range_list, i))
             # iterate through all possible labels
             for possible_label in possible_labels:
@@ -434,32 +372,37 @@ def analyze_cluster_lists(label, cluster_lists):
                 
     create_histogram(cluster_energies, label)
             
+def train_model(save=False):
+
+    files = ['out_1173.csv', 'out_1332.csv', 'out_2505.csv']
+    max_clusters_per_file = 10000
+
+    data = DataWrangler(files, max_clusters_per_file=max_clusters_per_file)
+    
+    model = get_recurrent_model(data)
+
+    if(save):
+        model.save('recurrent_model')
+    
+    return model
+
+def load_model():
+    model = keras.models.load_model('recurrent_model/')
+    return model
 
 def main():
 
-    files = ['out_1173.csv', 'out_1332.csv', 'out_2505.csv']
-    max_clusters_per_file_ = 10000
-    
-    #data_all = DataWrangler(files, max_clusters_per_file=max_clusters_per_file_)
-    data2505 = DataWrangler(['out_2505.csv'], expected_energies = [1173, 1332], for_training=False, max_clusters_per_file=max_clusters_per_file_)
-    data1173 = DataWrangler(['out_1173.csv'], expected_energies = [1173], for_training=False, max_clusters_per_file=max_clusters_per_file_)
-    data1332 = DataWrangler(['out_1332.csv'], expected_energies = [1332], for_training=False, max_clusters_per_file=max_clusters_per_file_)
-    
-    #model = get_recurrent_model(data_all)
-    #model = get_classification_model(data_all)
+    train_model(save=True)
 
+    #data2505 = DataWrangler(['out_2505.csv'], expected_energies = [1173, 1332], is_training=True, max_clusters_per_file=max_clusters_per_file_)
+    #data1173 = DataWrangler(['out_1173.csv'], expected_energies = [1173], is_training=False, max_clusters_per_file=max_clusters_per_file_)
+    #data1332 = DataWrangler(['out_1332.csv'], expected_energies = [1332], is_training=False, max_clusters_per_file=max_clusters_per_file_)
 
-    #model = neural_net_gamma_count.get_model()
-    #model.save('classification_model_100_epochs')
+    #clusters_2505, _ = data2505.get_dataset()
+    #clusters_1173, _ = data1173.get_dataset()
+    #clusters_1332, _ = data1332.get_dataset()
     
-    model_recurrent = keras.models.load_model('recurrent_model_100_epochs/')
-    #model_classification = keras.models.load_model('classification_model_100_epochs/')
-
-    clusters_2505, _ = data2505.get_dataset()
-    clusters_1173, _ = data1173.get_dataset()
-    clusters_1332, _ = data1332.get_dataset()
-    
-    recovered_2505, recurrent_certainty_correct_2505, recurrent_certainty_incorrect_2505 = parse_gammas(data2505, model_recurrent)
+    '''recovered_2505, recurrent_certainty_correct_2505, recurrent_certainty_incorrect_2505 = parse_gammas(data2505, model_recurrent)
     recovered_1173, recurrent_certainty_correct_1173, recurrent_certainty_incorrect_1173 = parse_gammas(data1173, model_recurrent)
     recovered_1332, recurrent_certainty_correct_1332, recurrent_certainty_incorrect_1332 = parse_gammas(data1332, model_recurrent)
 
@@ -468,7 +411,7 @@ def main():
     analyze_cluster_lists("all_parsed", [recovered_2505, recovered_1173, recovered_1332])
     analyze_cluster_lists("all_raw", [clusters_2505, clusters_1173, clusters_1332])
     analyze_cluster_lists("non2505_parsed", [recovered_1173, recovered_1332])
-    analyze_cluster_lists("non2505_raw", [clusters_1173, clusters_1332])
+    analyze_cluster_lists("non2505_raw", [clusters_1173, clusters_1332])'''
 
     
 if(__name__ == "__main__"):

@@ -375,7 +375,7 @@ def transform_cluster_list_into_3d(cluster_list, dimensionality_of_interaction, 
     return inputs, labels
 
 # create a 3d array from the cluster list, but each input layer is sorted by distance from the origin
-def transform_cluter_list_into_sorted_3d(cluster_list, dimensionality_of_interaction, max_interactions):
+def transform_cluster_list_into_sorted_3d(cluster_list, dimensionality_of_interaction, max_interactions):
 
     inputs = np.zeros([len(cluster_list), max_interactions, dimensionality_of_interaction])
     labels = np.zeros(len(cluster_list), dtype='i4')
@@ -574,6 +574,17 @@ def get_model():
     return train_fixed_input(data)    
     #return train_recurrent(data)    
 
+def get_3d():
+    file_names = ["out_1173.csv", "out_1332.csv", "out_2505.csv"]
+    file_read_limit = 10000 # max number of clusters to read from a file. Zero is no limit
+    test_porportion = 0.2 # porportion of the data used for testing
+    
+    data = Data(file_names, file_read_limit, test_porportion)
+    cluster_list = data.get_cluster_list()
+    data, labels = transform_cluster_list_into_3d(cluster_list,5, 20)
+
+    return data, labels
+    
 def main():
     
     file_names = ["out_1173.csv", "out_1332.csv", "out_2505.csv"]
@@ -581,12 +592,15 @@ def main():
     test_porportion = 0.2 # porportion of the data used for testing
     
     data = Data(file_names, file_read_limit, test_porportion)
-
-    print("Total clusters read from files: ", data.get_cluster_count())
-    print("Train clusters read from files: ", data.get_train_count())
-    print("Test clusters read from files : ", data.get_test_count())
-
+    cluster_list = data.get_cluster_list()
+    train_inputs, _ = transform_cluster_list_into_3d(cluster_list,5, 20)
     
+    #print("Total clusters read from files: ", data.get_cluster_count())
+    #print("Train clusters read from files: ", data.get_train_count())
+    #print("Test clusters read from files : ", data.get_test_count())
+
+    for i in range(0,20):
+        print(train_inputs[i])
     
     #data.normalize_train_test()
     
