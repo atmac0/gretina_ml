@@ -48,6 +48,8 @@ class DataWrangler:
             self.dataset = np.asarray( self.dataset )
             self.labels  = np.asarray( self.labels )
 
+            self.labels = self.labels - 1 # shift over gamma count to start at 0 so keras can understand (output layer indexing starts at 0).
+            
             if(normalize):
                 self.normalize_dataset()
             
@@ -63,7 +65,6 @@ class DataWrangler:
             self.dataset = np.asarray( self.dataset )
             self.labels  = np.asarray( self.labels )
 
-        self.labels = self.labels - 1 # shift over gamma count to start at 0 so keras can understand (output layer indexing starts at 0).
         data_len = len(self.dataset)
         
         print("Finished initializing dataset.")
@@ -213,13 +214,14 @@ class DataWrangler:
         if( (val - self.deviance) < number < (val + self.deviance) ):
             return True
         return False
-                   
-def get_recurrent_model(data):
+
+
+def train_model(data):
 
     train_inputs, train_labels, test_inputs, test_labels = data.get_training_dataset()
     print("Successfully obtained training input and labels")    
 
-    n_hidden_layer = 32 # size of hidden layer
+    n_hidden_layer = 16 # size of hidden layer
     n_output_layer = 2
 
     max_interactions = data.get_max_interactions()
@@ -227,6 +229,7 @@ def get_recurrent_model(data):
     
     model = keras.Sequential([
         keras.layers.Bidirectional(keras.layers.LSTM(n_output_layer, return_sequences=True), input_shape=(max_interactions, dimensionality_of_interaction)),
+        keras.layers.Dense(32, activation='relu'),
         keras.layers.Bidirectional( keras.layers.LSTM(n_hidden_layer) ),
         keras.layers.Dense(n_output_layer, activation='softmax')
     ])    
@@ -236,7 +239,7 @@ def get_recurrent_model(data):
               metrics=['accuracy'])    
 
     print("Model go beep boop")
-    model.fit(train_inputs, train_labels, epochs=2)
+    model.fit(train_inputs, train_labels, epochs=100)
 
     test_loss, test_acc = model.evaluate(test_inputs, test_labels, verbose=2)
 
@@ -323,6 +326,7 @@ def parse_gammas(data, model):
         recovered_gammas.append(retrieved_interactions)
 
         csv_data = [str(single_gamma_probabilities[max_prob_index]), str(max_prob_index), str(num_interactions(cluster)), str(final_label), str(label)]
+
         if(final_label == label):
             num_correct = num_correct + 1
             correct_data.append(csv_data)
@@ -332,12 +336,14 @@ def parse_gammas(data, model):
         num_predictions = num_predictions + 1
         print('accuracy: {0}\r'.format(num_correct/num_predictions)),
 
+
+    accuracy = num_correct/num_predictions
     print()
     print("TOTAL NUM PREDICTIONS: ", num_predictions)
     print("TOTAL CORRECT:         ", num_correct)
-    print("ACCURACY:              ", num_correct/num_predictions)
+    print("ACCURACY:              ", accuracy)
 
-    return recovered_gammas, np.asarray(correct_data), np.asarray(incorrect_data)
+    return recovered_gammas, np.asarray(correct_data), np.asarray(incorrect_data), accuracy
 
 
 def get_cluster_energy(cluster):
@@ -374,45 +380,41 @@ def analyze_cluster_lists(label, cluster_lists):
             
 def train_model(save=False):
 
-    files = ['out_1173.csv', 'out_1332.csv', 'out_2505.csv']
-    max_clusters_per_file = 10000
+    files = ['input_data/out_1173.csv', 'input_data/out_1332.csv', 'input_data/out_2505.csv']
+    max_clusters_per_file = 6000
 
     data = DataWrangler(files, max_clusters_per_file=max_clusters_per_file)
     
-    model = get_recurrent_model(data)
+    model = train_model(data)
 
     if(save):
-        model.save('recurrent_model')
+        model.save('model')
     
     return model
 
-def load_model():
-    model = keras.models.load_model('recurrent_model/')
+def load_model(model_name):
+    model = keras.models.load_model(model_name)
     return model
 
 def main():
 
-    train_model(save=True)
-
-    #data2505 = DataWrangler(['out_2505.csv'], expected_energies = [1173, 1332], is_training=True, max_clusters_per_file=max_clusters_per_file_)
-    #data1173 = DataWrangler(['out_1173.csv'], expected_energies = [1173], is_training=False, max_clusters_per_file=max_clusters_per_file_)
-    #data1332 = DataWrangler(['out_1332.csv'], expected_energies = [1332], is_training=False, max_clusters_per_file=max_clusters_per_file_)
-
-    #clusters_2505, _ = data2505.get_dataset()
-    #clusters_1173, _ = data1173.get_dataset()
-    #clusters_1332, _ = data1332.get_dataset()
+    model = train_model(save=True)
+    #model  = load_model('recurrent_model/') 
+    exit(0)
+    max_clusters_per_file = 6000
     
-    '''recovered_2505, recurrent_certainty_correct_2505, recurrent_certainty_incorrect_2505 = parse_gammas(data2505, model_recurrent)
-    recovered_1173, recurrent_certainty_correct_1173, recurrent_certainty_incorrect_1173 = parse_gammas(data1173, model_recurrent)
-    recovered_1332, recurrent_certainty_correct_1332, recurrent_certainty_incorrect_1332 = parse_gammas(data1332, model_recurrent)
+    data2505 = DataWrangler(['input_data/out_2505.csv'], expected_energies = [1173, 1332], is_training=False, max_clusters_per_file=max_clusters_per_file)
+    data1173 = DataWrangler(['input_data/out_1173.csv'], expected_energies = [1173], is_training=False, max_clusters_per_file=max_clusters_per_file)
+    data1332 = DataWrangler(['input_data/out_1332.csv'], expected_energies = [1332], is_training=False, max_clusters_per_file=max_clusters_per_file)
+    
+    recovered_2505, certainty_correct_2505, certainty_incorrect_2505, accuracy_2505 = parse_gammas(data2505, model)
+    recovered_1173, certainty_correct_1173, certainty_incorrect_1173, accuracy_1173 = parse_gammas(data1173, model)
+    recovered_1332, certainty_correct_1332, certainty_incorrect_1332, accuracy_1332 = parse_gammas(data1332, model)
 
-    analyze_cluster_lists("2505_parsed", [recovered_2505])
-    analyze_cluster_lists("2505_raw", [clusters_2505])    
-    analyze_cluster_lists("all_parsed", [recovered_2505, recovered_1173, recovered_1332])
-    analyze_cluster_lists("all_raw", [clusters_2505, clusters_1173, clusters_1332])
-    analyze_cluster_lists("non2505_parsed", [recovered_1173, recovered_1332])
-    analyze_cluster_lists("non2505_raw", [clusters_1173, clusters_1332])'''
-
+    print("FINAL RESULTS:")
+    print("2505 accuracy: ", accuracy_2505)
+    print("1173 accuracy: ", accuracy_1173)
+    print("1332 accuracy: ", accuracy_1332)
     
 if(__name__ == "__main__"):
     main()
