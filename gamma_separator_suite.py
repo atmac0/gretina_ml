@@ -20,8 +20,6 @@ from operator import itemgetter
 
 import itertools
 
-import neural_net_gamma_count
-
 class DataWrangler:
 
     def __init__(self, filenames, max_clusters_per_file=0, is_training=True, expected_energies=None, randomize=True, normalize=True):
@@ -166,7 +164,8 @@ class DataWrangler:
 
     # sort a cluster by distance from the origin (i.e. interactions closer to the origin appear first in the list)
     def sort_cluster(self, cluster):
-        return sorted(cluster, key=itemgetter(4)) # itemgetter of 4 selects the distance from the origin as the value to be sorted
+        sorted_cluster = sorted(cluster, key=itemgetter(4), reverse=True) # itemgetter of 4 selects the distance from the origin as the value to be sorted
+        return sorted_cluster 
 
     # labels are going to be a list, in order, of the indices in the cluster that make up the gamma ray of the first interaction point
     def create_testing_label(self, cluster):
@@ -229,8 +228,8 @@ def train_model(data):
     
     model = keras.Sequential([
         keras.layers.Bidirectional(keras.layers.LSTM(n_output_layer, return_sequences=True), input_shape=(max_interactions, dimensionality_of_interaction)),
-        keras.layers.Dense(32, activation='relu'),
-        keras.layers.Bidirectional( keras.layers.LSTM(n_hidden_layer) ),
+        keras.layers.Dense(32, activation='tanh'),
+        keras.layers.Bidirectional( keras.layers.LSTM(n_hidden_layer, activation='tanh') ),
         keras.layers.Dense(n_output_layer, activation='softmax')
     ])    
 
@@ -378,13 +377,13 @@ def analyze_cluster_lists(label, cluster_lists):
                 
     create_histogram(cluster_energies, label)
             
-def train_model(save=False):
+def get_model(save=False):
 
-    files = ['input_data/out_1173.csv', 'input_data/out_1332.csv', 'input_data/out_2505.csv']
+    files = ['out_1173.csv', 'out_1332.csv', 'out_2505.csv']
     max_clusters_per_file = 6000
 
     data = DataWrangler(files, max_clusters_per_file=max_clusters_per_file)
-    
+
     model = train_model(data)
 
     if(save):
@@ -398,14 +397,14 @@ def load_model(model_name):
 
 def main():
 
-    model = train_model(save=True)
-    #model  = load_model('recurrent_model/') 
-    exit(0)
+    #model = get_model(save=True)
+    model  = load_model('model/')
+    
     max_clusters_per_file = 6000
     
-    data2505 = DataWrangler(['input_data/out_2505.csv'], expected_energies = [1173, 1332], is_training=False, max_clusters_per_file=max_clusters_per_file)
-    data1173 = DataWrangler(['input_data/out_1173.csv'], expected_energies = [1173], is_training=False, max_clusters_per_file=max_clusters_per_file)
-    data1332 = DataWrangler(['input_data/out_1332.csv'], expected_energies = [1332], is_training=False, max_clusters_per_file=max_clusters_per_file)
+    data2505 = DataWrangler(['out_2505.csv'], expected_energies = [1173, 1332], is_training=False, max_clusters_per_file=max_clusters_per_file)
+    data1173 = DataWrangler(['out_1173.csv'], expected_energies = [1173], is_training=False, max_clusters_per_file=max_clusters_per_file)
+    data1332 = DataWrangler(['out_1332.csv'], expected_energies = [1332], is_training=False, max_clusters_per_file=max_clusters_per_file)
     
     recovered_2505, certainty_correct_2505, certainty_incorrect_2505, accuracy_2505 = parse_gammas(data2505, model)
     recovered_1173, certainty_correct_1173, certainty_incorrect_1173, accuracy_1173 = parse_gammas(data1173, model)
