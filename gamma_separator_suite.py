@@ -22,7 +22,7 @@ import itertools
 
 class DataWrangler:
 
-    def __init__(self, filenames, max_clusters_per_file=0, is_training=True, expected_energies=None, randomize=True, normalize=True):
+    def __init__(self, filenames, max_clusters_per_file=0, is_training=True, expected_energies=None, randomize=True, normalize=False):
 
         if(is_training == False and expected_energies == None):
             print("Invalid training configuration!")
@@ -321,8 +321,18 @@ def parse_gammas(data, model):
         final_label = all_possible_labels[max_prob_index]
 
         # recover the interactions of the predicted gamma, and store it
-        retrieved_interactions = [cluster[i] for i in final_label]
+        retrieved_interactions = np.asarray([cluster[i] for i in final_label])
+        leftover_interactions  = np.delete(cluster, final_label, 0) # the leftover are all the interactions not in the recovered
+
+        # create padding of zeros for retrieved and leftover
+        retrieved_padding = np.zeros((max_interactions - len(retrieved_interactions), dimensionality_of_interaction))
+        leftover_padding  = np.zeros((max_interactions - len(leftover_interactions), dimensionality_of_interaction))
+
+        retrieved_interactions = np.concatenate((retrieved_interactions, retrieved_padding))
+        leftover_interactions = np.concatenate((leftover_interactions, leftover_padding))
+    
         recovered_gammas.append(retrieved_interactions)
+        recovered_gammas.append(leftover_interactions)
 
         csv_data = [str(single_gamma_probabilities[max_prob_index]), str(max_prob_index), str(num_interactions(cluster)), str(final_label), str(label)]
 
@@ -342,32 +352,29 @@ def parse_gammas(data, model):
     print("TOTAL CORRECT:         ", num_correct)
     print("ACCURACY:              ", accuracy)
 
-    return recovered_gammas, np.asarray(correct_data), np.asarray(incorrect_data), accuracy
+    return np.asarray(recovered_gammas), np.asarray(correct_data), np.asarray(incorrect_data), accuracy
 
 
 def get_cluster_energy(cluster):
-    cluster_energy = 0
-    for interaction in cluster:
-        cluster_energy = cluster_energy + interaction[0]
-
+    cluster_energy = cluster.sum(axis=0)[0]
     return cluster_energy
 
 def create_histogram(lst, label):
 
-    max_allowed = 2800
-    lst = [x for x in lst if x < max_allowed]
+    max_plot_energy = 2800
+    lst = [x for x in lst if x < max_plot_energy]
     
     file_name = label + '.png'
 
-    n, bins, patches = plt.hist(lst, bins=max_allowed, facecolor='blue', alpha=0.5)
+    n, bins, patches = plt.hist(lst, bins=max_plot_energy, facecolor='blue', alpha=0.5)
     plt.savefig(file_name, dpi=300)
     plt.clf()
 
 def analyze_cluster_lists(label, cluster_lists):
     cluster_energies = []
-    
-    for lst in cluster_lists:
-        for cluster in lst:
+
+    for cluster_list in cluster_lists:
+        for cluster in cluster_list:
             cluster_energies.append(get_cluster_energy(cluster))
 
     with open(label + '.csv', 'w', newline='') as csvfile:
@@ -399,17 +406,25 @@ def main():
 
     #model = get_model(save=True)
     model  = load_model('model/')
-    
-    max_clusters_per_file = 6000
-    
+
+    #max_clusters_per_file = 20
+    max_clusters_per_file = 100000
+
+    #data_all = DataWrangler(['out_1173.csv', 'out_1332.csv', 'out_2505.csv'], max_clusters_per_file=max_clusters_per_file)
+
     data2505 = DataWrangler(['out_2505.csv'], expected_energies = [1173, 1332], is_training=False, max_clusters_per_file=max_clusters_per_file)
     data1173 = DataWrangler(['out_1173.csv'], expected_energies = [1173], is_training=False, max_clusters_per_file=max_clusters_per_file)
     data1332 = DataWrangler(['out_1332.csv'], expected_energies = [1332], is_training=False, max_clusters_per_file=max_clusters_per_file)
     
-    recovered_2505, certainty_correct_2505, certainty_incorrect_2505, accuracy_2505 = parse_gammas(data2505, model)
-    recovered_1173, certainty_correct_1173, certainty_incorrect_1173, accuracy_1173 = parse_gammas(data1173, model)
-    recovered_1332, certainty_correct_1332, certainty_incorrect_1332, accuracy_1332 = parse_gammas(data1332, model)
+    recovered_2505, correct_2505, incorrect_2505, accuracy_2505 = parse_gammas(data2505, model)
+    recovered_1173, correct_1173, incorrect_1173, accuracy_1173 = parse_gammas(data1173, model)
+    recovered_1332, correct_1332, incorrect_1332, accuracy_1332 = parse_gammas(data1332, model)
+    
+    recovered_all = [recovered_2505, recovered_1173, recovered_1332]
+    
 
+    analyze_cluster_lists('recovered_all_histo', recovered_all)
+    
     print("FINAL RESULTS:")
     print("2505 accuracy: ", accuracy_2505)
     print("1173 accuracy: ", accuracy_1173)
