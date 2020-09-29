@@ -1,6 +1,8 @@
 from math import *
 import numpy as np
 
+import itertools
+
 from cluster_tools import *
 
 def predict_gamma_counts(model, dataset):
@@ -22,8 +24,7 @@ def parse_gammas(data, model):
 
     # these are for gathering calibration statistics
     csv_header = ["max probability", "max_prob_index", "num_interactions",  "predicted_label", "correct_label"]
-    correct_data = [csv_header]
-    incorrect_data = [csv_header]
+
     recovered_gammas = []
 
     predicted_gamma_counts = predict_gamma_counts(model, dataset)
@@ -107,9 +108,6 @@ def parse_gammas(data, model):
 
             if(predicted_label == label):
                 num_correct = num_correct + 1
-                correct_data.append(csv_data)
-            else:
-                incorrect_data.append(csv_data)
 
             num_predictions = num_predictions + 1
             print('accuracy: {0}\r'.format(num_correct/num_predictions)),
@@ -121,4 +119,4 @@ def parse_gammas(data, model):
     print("TOTAL CORRECT:         ", num_correct)
     print("ACCURACY:              ", accuracy)
 
-    return np.asarray(recovered_gammas), np.asarray(correct_data), np.asarray(incorrect_data), accuracy
+    return np.asarray(recovered_gammas), accuracy
