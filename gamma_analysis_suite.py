@@ -11,7 +11,7 @@ from math import *
 import itertools
 
 from data_wrangler import DataWrangler
-from model_trainer import get_model
+from model_tools import *
 from gamma_parser  import *
 from cluster_tools import *
 
@@ -38,28 +38,16 @@ def clean_multiple_gammas(data, model):
     cleaned_dataset = dataset[mask]
     
     return cleaned_dataset
-    
-
-def load_model(model_name):
-    model = keras.models.load_model(model_name)
-    return model
 
                                                 
-def output_raw_spectrum():
-
-    model  = load_model('model/')    
-    max_clusters_per_file = 0
-    data = DataWrangler(['out_1173.csv', 'out_1332.csv', 'out_2505.csv'], max_clusters_per_file=max_clusters_per_file)
+def output_raw_spectrum(data, model):
 
     dataset, _ = data.get_dataset()
     
     cluster_list_to_histo('raw_histo', dataset)
 
     
-def output_recovered_spectrum():
-    model  = load_model('model/')    
-    max_clusters_per_file = 0
-    data = DataWrangler(['out_2505.csv', 'out_1173.csv', 'out_1332.csv'], expected_energies = [1173, 1332], is_training=False, max_clusters_per_file=max_clusters_per_file)
+def output_recovered_spectrum(data, model):
     
     recovered_gammas, accuracy = parse_gammas(data, model)
     
@@ -69,21 +57,22 @@ def output_recovered_spectrum():
     print("Accuracy: ", accuracy)
 
 
-def output_cleaned_spectrum():
-    
-    model  = load_model('model/')    
-    max_clusters_per_file = 0
-    data = DataWrangler(['out_1173.csv', 'out_1332.csv', 'out_2505.csv'], max_clusters_per_file=max_clusters_per_file)
- 
+def output_cleaned_spectrum(data, model):
+
     cleaned_dataset = clean_multiple_gammas(data, model)
     cluster_list_to_histo('cleaned_all_histos', cleaned_dataset)    
     
 def main():
 
     #model = get_model(save=True)
-    output_cleaned_spectrum()
-    output_raw_spectrum()
-    output_recovered_spectrum()
+
+    model  = load_model('model/')    
+    max_clusters_per_file = 0
+    data = DataWrangler(['out_1173.csv', 'out_1332.csv', 'out_2505.csv'], max_clusters_per_file=max_clusters_per_file)
+    
+    output_cleaned_spectrum(data, model)
+    output_raw_spectrum(data, model)
+    output_recovered_spectrum(data, model)
 
 
     
