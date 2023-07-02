@@ -15,7 +15,7 @@ def predict_gamma_counts(model, dataset):
 def parse_gammas(data, model):
 
     dataset, labels = data.get_dataset()
-    
+
     max_interactions              = data.get_max_interactions()
     dimensionality_of_interaction = data.get_dimensionality_of_interaction()
 

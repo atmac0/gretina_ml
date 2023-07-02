@@ -67,8 +67,8 @@ def main():
     #model = get_model(save=True)
 
     model  = load_model('model/')    
-    max_clusters_per_file = 0
-    data = DataWrangler(['out_1173.csv', 'out_1332.csv', 'out_2505.csv'], max_clusters_per_file=max_clusters_per_file)
+    max_clusters_per_file = 1000000
+    data = DataWrangler(['out_1173.csv', 'out_1332.csv', 'out_2505.csv'], max_clusters_per_file=max_clusters_per_file, is_training=False, expected_energies=[1173, 1332])
     
     output_cleaned_spectrum(data, model)
     output_raw_spectrum(data, model)
